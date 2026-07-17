@@ -1,9 +1,600 @@
-params = {
-            "p_primer_nombre": 1
-           
+from sqlalchemy.orm import Session
+from app.Repository.DbCaller import DbCaller
+
+
+class ProduccionBobinaTuboRepository:
+    def __init__(self, db: Session):
+        self.caller = DbCaller(db)
+
+    def IniciarProduccionBobinaTubo(self, params: dict) -> dict | None:
+        sql = """
+            SELECT * FROM "IniciarProduccionBobinaTubo"(
+                :p_IdBobina1,
+                :p_IdBobina2,
+                :p_IdUsuario
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql, params)
+    
+    def FinalizarProduccion(self,params:dict)->dict:
+        sql="""
+            Select * from "FinalizarProduccionBobinaTubo"(
+            :p_IdProduccionBobinaTubo,
+            :p_IdUsuario 
+            )
+            """
+        return self.caller.LlamarUnRegistro(sql,params)
+    def PausarProduccion(self,params:dict)->dict:
+        sql="""
+            select * from "FnPausarProduccionBobinaTubo"(
+            :p_IdProduccionBobinaTubo,
+            :p_IdUsuario,
+            :p_MotivoPausaProduccion 
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params)
+    def RenudarProduccion(self,params:dict)->dict:
+        sql="""
+            select * from "ReanudarProduccionBobinaTubo"(
+            :p_IdProduccionBobinaTubo,
+            :p_IdUsuario
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params)
+    def CancelarProduccion(self,params:dict)->dict:
+        sql="""
+            select * from "CancelarProduccionBobinaTubo"(
+            :p_id_produccion,
+            :p_id_usuario,
+            :p_motivo_cancelacion
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params)
+    
+    def ReingresarBobina(self,params:dict)->dict:
+        sql="""
+            select * from "ReingresarBobinaAInventario"(
+            :p_IdBobinaPapel,
+            :p_IdUsuario,
+            :p_Observacion
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params)
+    def DarDeBajaBobina(self,params:dict)->dict:
+        sql="""
+            select * from "DarDeBajaBobina"(
+            :p_IdBobinaPapel,
+            :p_IdUsuario,
+            :p_Observacion
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params)
+    
+    def InsertarMovimientoOperadorLogs(self,params:dict)->dict:
+        sql="""
+            select * from "InsertarMovimientoOperadorLogs"(
+            :p_IdProduccionBobinaTubo,
+            :p_IdTipoMovimientoOperadorLogs,
+            :p_IdUsuario,
+            :p_CantidadLogs,
+            :p_Observacion
+            )
+        """
+        return self.caller.LlamarUnRegistro(sql,params) 
+    
+
+    from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException, status
+from app.Repository.BobinaPapel.produccionbobinarepository import ProduccionBobinaTuboRepository
+from app.Models.BobinaPapel.IniciarProduccion import IniciarProduccionBobinaTuboRequest, IniciarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.FinalizarProduccion import FinalizarProduccionBobinaTuboRequest,FinalizarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.PausaProduccion import PausarProduccionBobinaTuboRequest,PausarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.ReanudarProduccion import ReanudarProduccionBobinaTuboRequest,ReanudarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.CancelarProduccion import CancelarProduccionBobinaTuboRequest,CancelarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.ReIngresarBobina import ReingresarBobinaAInventarioRequest,ReingresarBobinaAInventarioResponse
+from app.Models.BobinaPapel.BajarBobina import DarDeBajaBobinaRequest,DarDeBajaBobinaResponse
+from app.Models.BobinaPapel.OperadorLogs import InsertarMovimientoOperadorLogsRequest,InsertarMovimientoOperadorLogsResponse
+
+class ProduccionBobinaTuboService:
+    def __init__(self, db: Session):
+        self.repository = ProduccionBobinaTuboRepository(db)
+
+    def IniciarProduccionBobinaTubo(self, data: IniciarProduccionBobinaTuboRequest) -> IniciarProduccionBobinaTuboResponse:
+        params = {
+            "p_IdBobina1": data.IdBobina1,
+            "p_IdBobina2": data.IdBobina2,
+            "p_IdUsuario": data.IdUsuario,
         }
 
+        try:
+            resultado = self.repository.IniciarProduccionBobinaTubo(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "no puede ser la misma bobina" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="IdBobina1 e IdBobina2 no pueden ser la misma bobina"
+                )
+            if "No existe la bobina" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Una de las bobinas indicadas no existe"
+                )
+            if "no está En almacén" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Una de las bobinas indicadas no está disponible en almacén"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo iniciar la producción de bobina tubo, verifica los datos ingresados"
+            )
 
-print ( type(params))
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo iniciar la producción de bobina tubo"
+            )
+
+        return IniciarProduccionBobinaTuboResponse(**resultado)
+    def FinalizarProduccion(self, data: FinalizarProduccionBobinaTuboRequest) -> FinalizarProduccionBobinaTuboResponse:
+        params = {
+            "p_IdProduccionBobinaTubo": data.IdProduccionBobinaTubo,
+            "p_IdUsuario": data.IdUsuario,
+        }
+
+        try:
+            resultado = self.repository.FinalizarProduccion(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la producción con id {data.IdProduccionBobinaTubo}"
+                )
+            if "no se encuentra En Producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La producción indicada no se encuentra En Producción, no puede finalizarse"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo finalizar la producción de bobina tubo, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo finalizar la producción de bobina tubo"
+            )
+
+        return FinalizarProduccionBobinaTuboResponse(**resultado)
+    def PausarProduccion(self, data: PausarProduccionBobinaTuboRequest) -> PausarProduccionBobinaTuboResponse:
+        params = {
+            "p_IdProduccionBobinaTubo": data.IdProduccionBobinaTubo,
+            "p_IdUsuario": data.IdUsuario,
+            "p_MotivoPausaProduccion": data.MotivoPausaProduccion,
+        }
+
+        try:
+            resultado = self.repository.PausarProduccion(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la producción con id {data.IdProduccionBobinaTubo}"
+                )
+            if "no se encuentra En Producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La producción indicada no se encuentra En Producción, no puede pausarse"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo pausar la producción de bobina tubo, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo pausar la producción de bobina tubo"
+            )
+
+        return PausarProduccionBobinaTuboResponse(**resultado)
+    
+    
+    def ReanudarProduccion(self, data: ReanudarProduccionBobinaTuboRequest) -> ReanudarProduccionBobinaTuboResponse:
+        params = {
+            "p_IdProduccionBobinaTubo": data.IdProduccionBobinaTubo,
+            "p_IdUsuario": data.IdUsuario,
+        }
+
+        try:
+            resultado = self.repository.RenudarProduccion(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la producción con id {data.IdProduccionBobinaTubo}"
+                )
+            if "No existe una pausa activa" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No existe una pausa activa para la producción indicada"
+                )
+            if "no se encuentra en Pausa" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La producción indicada no se encuentra en Pausa, no puede reanudarse"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo reanudar la producción de bobina tubo, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo reanudar la producción de bobina tubo"
+            )
+
+        return ReanudarProduccionBobinaTuboResponse(**resultado)
+    
+    def CancelarProduccion(self, data: CancelarProduccionBobinaTuboRequest) -> CancelarProduccionBobinaTuboResponse:
+        params = {
+            "p_id_produccion": data.IdProduccionBobinaTubo,
+            "p_id_usuario": data.IdUsuario,
+            "p_motivo_cancelacion": data.MotivoCancelacion,
+        }
+
+        try:
+            resultado = self.repository.CancelarProduccion(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la producción con id {data.IdProduccionBobinaTubo}"
+                )
+            if "no está en Pausa" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La producción indicada no está en Pausa, no se puede cancelar"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo cancelar la producción de bobina tubo, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo cancelar la producción de bobina tubo"
+            )
+
+        return CancelarProduccionBobinaTuboResponse(**resultado)
+    def ReingresarBobina(self, data: ReingresarBobinaAInventarioRequest) -> ReingresarBobinaAInventarioResponse:
+        params = {
+            "p_IdBobinaPapel": data.IdBobinaPapel,
+            "p_IdUsuario": data.IdUsuario,
+            "p_Observacion": data.Observacion,
+        }
+
+        try:
+            resultado = self.repository.ReingresarBobina(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la bobina" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la bobina con id {data.IdBobinaPapel}"
+                )
+            if "no está Fuera de Inventario" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La bobina indicada no está Fuera de Inventario, no puede reingresarse"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo reingresar la bobina a inventario, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo reingresar la bobina a inventario"
+            )
+
+        return ReingresarBobinaAInventarioResponse(**resultado)
+    
+    def DarDeBajaBobina(self, data: DarDeBajaBobinaRequest) -> DarDeBajaBobinaResponse:
+        params = {
+            "p_IdBobinaPapel": data.IdBobinaPapel,
+            "p_IdUsuario": data.IdUsuario,
+            "p_Observacion": data.Observacion,
+        }
+
+        try:
+            resultado = self.repository.DarDeBajaBobina(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "No existe la bobina" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la bobina con id {data.IdBobinaPapel}"
+                )
+            if "no está Fuera de Inventario" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La bobina indicada no está Fuera de Inventario, no puede darse de baja"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo dar de baja la bobina, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo dar de baja la bobina"
+            )
+
+        return DarDeBajaBobinaResponse(**resultado)
+    
+    def InsertarMovimientoOperadorLogs(self, data: InsertarMovimientoOperadorLogsRequest) -> InsertarMovimientoOperadorLogsResponse:
+        params = {
+            "p_IdProduccionBobinaTubo": data.IdProduccionBobinaTubo,
+            "p_IdTipoMovimientoOperadorLogs": data.IdTipoMovimientoOperadorLogs,
+            "p_IdUsuario": data.IdUsuario,
+            "p_CantidadLogs": data.CantidadLogs,
+            "p_Observacion": data.Observacion,
+        }
+
+        try:
+            resultado = self.repository.InsertarMovimientoOperadorLogs(params)
+        except SQLAlchemyError as e:
+            mensaje = str(e.orig) if hasattr(e, "orig") else str(e)
+            if "CantidadLogs debe ser un valor positivo" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="CantidadLogs debe ser un valor positivo"
+                )
+            if "No existe la producción" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No existe la producción con id {data.IdProduccionBobinaTubo}"
+                )
+            if "no se pueden registrar logs" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La producción indicada no está En Producción ni en Pausa, no se pueden registrar logs"
+                )
+            if "No se puede descontar" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La cantidad a descontar supera el total de logs registrados"
+                )
+            if "no es válido" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El tipo de movimiento {data.IdTipoMovimientoOperadorLogs} no es válido"
+                )
+            if "IdUsuario" in mensaje and "fkey" in mensaje:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario con id {data.IdUsuario} no existe"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se pudo registrar el movimiento de logs del operador, verifica los datos ingresados"
+            )
+
+        if not resultado:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo registrar el movimiento de logs del operador"
+            )
+
+        return InsertarMovimientoOperadorLogsResponse(**resultado)
+    
+    from sqlalchemy import text
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException, status
 
 
+class DbCaller:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def LlamarFuncion(self, consulta: str, parametros: dict | None = None, commit: bool = True) -> list[dict]:
+        try:
+            res = self.db.execute(text(consulta), parametros or {})
+            filas = [dict(fila) for fila in res.mappings().all()]
+            if commit:
+                self.db.commit()
+            return filas
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error ejecutando operación en base de datos: {str(e)}"
+            )
+
+    def LlamarUnRegistro(self, consulta: str, parametros: dict | None = None, commit: bool = True) -> dict | None:
+        filas = self.LlamarFuncion(consulta, parametros, commit)
+        return filas[0] if filas else None
+    
+    from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.Config.supabase import get_db
+from app.Services.BobinaPapel.LoteBobinaPapelService import LoteBobinaService
+from app.Auth.Dependencies import require_role
+from app.Constants.Roles import ROL_LIDER_INVENTARIO_PRODUCCION,ROL_OPERADOR
+from app.Models.BobinaPapel.IngresoBobina import IngresoModelo,IngresoLoteBobinaPapelResponse
+from app.Services.BobinaPapel.ProduccionBobinaPapelService import ProduccionBobinaTuboService
+from app.Models.BobinaPapel.IniciarProduccion import IniciarProduccionBobinaTuboRequest, IniciarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.FinalizarProduccion import FinalizarProduccionBobinaTuboRequest, FinalizarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.PausaProduccion import PausarProduccionBobinaTuboRequest,PausarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.ReanudarProduccion import ReanudarProduccionBobinaTuboRequest,ReanudarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.CancelarProduccion import CancelarProduccionBobinaTuboRequest,CancelarProduccionBobinaTuboResponse
+from app.Models.BobinaPapel.ReIngresarBobina import ReingresarBobinaAInventarioRequest,ReingresarBobinaAInventarioResponse
+from app.Models.BobinaPapel.BajarBobina import DarDeBajaBobinaRequest,DarDeBajaBobinaResponse
+
+from app.Models.BobinaPapel.OperadorLogs import InsertarMovimientoOperadorLogsRequest,InsertarMovimientoOperadorLogsResponse
+
+
+PapelBobinaRouter = APIRouter(prefix="/papelbobina", tags=["Operaciones de produccion sobre Papel Bobina"])
+
+
+def bobina_papel_service(db: Session = Depends(get_db)) -> LoteBobinaService:
+    return LoteBobinaService(db)
+
+def iniciar_produccion_bobina_tubo_service(db: Session = Depends(get_db)) -> ProduccionBobinaTuboService:
+    return ProduccionBobinaTuboService(db)
+
+@PapelBobinaRouter.post(
+    "/cargarlotebobinapapel",
+    response_model=IngresoLoteBobinaPapelResponse,
+    status_code=201,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def CargarLoteBobinaPapel(
+    data: IngresoModelo,
+    service: LoteBobinaService = Depends(bobina_papel_service)
+):
+    return service.insertar_bobinas_papel(data)
+
+@PapelBobinaRouter.post(
+    "/iniciarproduccion",
+    response_model=IniciarProduccionBobinaTuboResponse,
+    status_code=201,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def IniciarProduccion(
+    data: IniciarProduccionBobinaTuboRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.IniciarProduccionBobinaTubo(data)
+
+@PapelBobinaRouter.post(
+    "/finalizarproduccion",
+    response_model=FinalizarProduccionBobinaTuboResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def FinalizarProduccion(
+    data: FinalizarProduccionBobinaTuboRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.FinalizarProduccion(data)
+
+@PapelBobinaRouter.post(
+    "/pausarproduccion",
+    response_model=PausarProduccionBobinaTuboResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def PausarProduccion(
+    data: PausarProduccionBobinaTuboRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.PausarProduccion(data)
+
+@PapelBobinaRouter.post(
+    "/reanudarproduccion",
+    response_model=ReanudarProduccionBobinaTuboResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def ReanudarProduccion(
+    data: ReanudarProduccionBobinaTuboRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.ReanudarProduccion(data)
+
+@PapelBobinaRouter.post(
+    "/cancelarproduccion",
+    response_model=CancelarProduccionBobinaTuboResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def CancelarProduccion(
+    data: CancelarProduccionBobinaTuboRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.CancelarProduccion(data)
+
+@PapelBobinaRouter.post(
+    "/reingresarbobinainventario",
+    response_model=ReingresarBobinaAInventarioResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def ReIngresarBobinaInventario(
+    data: ReingresarBobinaAInventarioRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.ReingresarBobina(data)
+
+@PapelBobinaRouter.post(
+    "/dardebajabobina",
+    response_model=DarDeBajaBobinaResponse,
+    status_code=200,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION]))]
+)
+def DarDeBajaBobina(
+    data: DarDeBajaBobinaRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.DarDeBajaBobina(data)
+
+@PapelBobinaRouter.post(
+    "/insertarmovimientolog",
+    response_model=InsertarMovimientoOperadorLogsResponse,
+    status_code=201,
+    dependencies=[Depends(require_role([ROL_LIDER_INVENTARIO_PRODUCCION,ROL_OPERADOR]))]
+)
+def InsertarMovimientoLog(
+    data: InsertarMovimientoOperadorLogsRequest,
+    service: ProduccionBobinaTuboService = Depends(iniciar_produccion_bobina_tubo_service)
+):
+    return service.InsertarMovimientoOperadorLogs(data)
