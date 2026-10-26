@@ -1,0 +1,7 @@
+CLAUDE.md
+.claude/
+Client/
+bd.sql
+data.sql
+Funciones.sql
+.env
